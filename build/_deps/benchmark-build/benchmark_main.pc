@@ -2,6 +2,6 @@ libdir=/usr/local/lib64
 
 Name: benchmark
 Description: Google microbenchmark framework (with main() function)
-Version: 1.9.5.33
+Version: 1.9.5.34
 Requires: benchmark
 Libs: -L${libdir} -lbenchmark_main

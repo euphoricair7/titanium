@@ -1,8 +1,10 @@
 #include <iostream>
 #include <chrono>
 #include <vector>
-#include "order_generator.h"
-#include "baseline_engine.h"
+#include "titanium/utils/order_generator.hpp"
+#include "titanium/engine/baseline_engine.hpp"
+
+using namespace titanium;
 
 int main() {
     std::cout << "[Titanium - Baseline] Generating 1 million orders for benchmark..." << std::endl;

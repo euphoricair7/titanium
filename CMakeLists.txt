@@ -15,26 +15,34 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     )
 endif()
 
+# Includes
+include_directories(include)
+
+# Core Library
+add_library(titanium_core STATIC
+    src/engine/baseline_engine.cpp
+    src/utils/order_generator.cpp
+)
+
+target_include_directories(titanium_core PUBLIC include)
+
+# Google Benchmark
 include(FetchContent)
-
-
 FetchContent_Declare(
     benchmark
     GIT_REPOSITORY https://github.com/google/benchmark.git
     GIT_TAG main
 )
-
 set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
-set(CMAKE_BUILD_TYPE Release)
 FetchContent_MakeAvailable(benchmark)
 
-add_executable(titanium_bench
-    benchmarks/dummy_bench.cpp
-)
+# Benchmarks
+add_executable(titanium_bench_baseline benchmarks/baseline_benchmark.cpp)
+target_link_libraries(titanium_bench_baseline PRIVATE titanium_core)
 
-target_link_libraries(titanium_bench
-    benchmark::benchmark_main
-    pthread
-)
+add_executable(titanium_bench_dummy benchmarks/dummy_bench.cpp)
+target_link_libraries(titanium_bench_dummy PRIVATE titanium_core benchmark::benchmark_main pthread)
 
-target_include_directories(titanium_bench PRIVATE include)
+# Unit Tests
+add_executable(titanium_test tests/test.cpp)
+target_link_libraries(titanium_test PRIVATE titanium_core)

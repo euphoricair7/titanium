@@ -1,4 +1,7 @@
-/home/grass/Documents/projects/titanium/build/CMakeFiles/titanium_bench.dir
+/home/grass/Documents/projects/titanium/build/CMakeFiles/titanium_core.dir
+/home/grass/Documents/projects/titanium/build/CMakeFiles/titanium_bench_baseline.dir
+/home/grass/Documents/projects/titanium/build/CMakeFiles/titanium_bench_dummy.dir
+/home/grass/Documents/projects/titanium/build/CMakeFiles/titanium_test.dir
 /home/grass/Documents/projects/titanium/build/CMakeFiles/edit_cache.dir
 /home/grass/Documents/projects/titanium/build/CMakeFiles/rebuild_cache.dir
 /home/grass/Documents/projects/titanium/build/CMakeFiles/list_install_components.dir

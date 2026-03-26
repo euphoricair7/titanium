@@ -1,0 +1,2 @@
+/usr/bin/ar qc libtitanium_core.a CMakeFiles/titanium_core.dir/src/engine/baseline_engine.cpp.o CMakeFiles/titanium_core.dir/src/utils/order_generator.cpp.o
+/usr/bin/ranlib libtitanium_core.a

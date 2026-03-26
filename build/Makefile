@@ -162,17 +162,56 @@ depend:
 .PHONY : depend
 
 #=============================================================================
-# Target rules for targets named titanium_bench
+# Target rules for targets named titanium_core
 
 # Build rule for target.
-titanium_bench: cmake_check_build_system
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 titanium_bench
-.PHONY : titanium_bench
+titanium_core: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 titanium_core
+.PHONY : titanium_core
 
 # fast build rule for target.
-titanium_bench/fast:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/titanium_bench.dir/build.make CMakeFiles/titanium_bench.dir/build
-.PHONY : titanium_bench/fast
+titanium_core/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/titanium_core.dir/build.make CMakeFiles/titanium_core.dir/build
+.PHONY : titanium_core/fast
+
+#=============================================================================
+# Target rules for targets named titanium_bench_baseline
+
+# Build rule for target.
+titanium_bench_baseline: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 titanium_bench_baseline
+.PHONY : titanium_bench_baseline
+
+# fast build rule for target.
+titanium_bench_baseline/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/titanium_bench_baseline.dir/build.make CMakeFiles/titanium_bench_baseline.dir/build
+.PHONY : titanium_bench_baseline/fast
+
+#=============================================================================
+# Target rules for targets named titanium_bench_dummy
+
+# Build rule for target.
+titanium_bench_dummy: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 titanium_bench_dummy
+.PHONY : titanium_bench_dummy
+
+# fast build rule for target.
+titanium_bench_dummy/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/titanium_bench_dummy.dir/build.make CMakeFiles/titanium_bench_dummy.dir/build
+.PHONY : titanium_bench_dummy/fast
+
+#=============================================================================
+# Target rules for targets named titanium_test
+
+# Build rule for target.
+titanium_test: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 titanium_test
+.PHONY : titanium_test
+
+# fast build rule for target.
+titanium_test/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/titanium_test.dir/build.make CMakeFiles/titanium_test.dir/build
+.PHONY : titanium_test/fast
 
 #=============================================================================
 # Target rules for targets named benchmark
@@ -200,12 +239,36 @@ benchmark_main/fast:
 	$(MAKE) $(MAKESILENT) -f _deps/benchmark-build/src/CMakeFiles/benchmark_main.dir/build.make _deps/benchmark-build/src/CMakeFiles/benchmark_main.dir/build
 .PHONY : benchmark_main/fast
 
+benchmarks/baseline_benchmark.o: benchmarks/baseline_benchmark.cpp.o
+.PHONY : benchmarks/baseline_benchmark.o
+
+# target to build an object file
+benchmarks/baseline_benchmark.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/titanium_bench_baseline.dir/build.make CMakeFiles/titanium_bench_baseline.dir/benchmarks/baseline_benchmark.cpp.o
+.PHONY : benchmarks/baseline_benchmark.cpp.o
+
+benchmarks/baseline_benchmark.i: benchmarks/baseline_benchmark.cpp.i
+.PHONY : benchmarks/baseline_benchmark.i
+
+# target to preprocess a source file
+benchmarks/baseline_benchmark.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/titanium_bench_baseline.dir/build.make CMakeFiles/titanium_bench_baseline.dir/benchmarks/baseline_benchmark.cpp.i
+.PHONY : benchmarks/baseline_benchmark.cpp.i
+
+benchmarks/baseline_benchmark.s: benchmarks/baseline_benchmark.cpp.s
+.PHONY : benchmarks/baseline_benchmark.s
+
+# target to generate assembly for a file
+benchmarks/baseline_benchmark.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/titanium_bench_baseline.dir/build.make CMakeFiles/titanium_bench_baseline.dir/benchmarks/baseline_benchmark.cpp.s
+.PHONY : benchmarks/baseline_benchmark.cpp.s
+
 benchmarks/dummy_bench.o: benchmarks/dummy_bench.cpp.o
 .PHONY : benchmarks/dummy_bench.o
 
 # target to build an object file
 benchmarks/dummy_bench.cpp.o:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/titanium_bench.dir/build.make CMakeFiles/titanium_bench.dir/benchmarks/dummy_bench.cpp.o
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/titanium_bench_dummy.dir/build.make CMakeFiles/titanium_bench_dummy.dir/benchmarks/dummy_bench.cpp.o
 .PHONY : benchmarks/dummy_bench.cpp.o
 
 benchmarks/dummy_bench.i: benchmarks/dummy_bench.cpp.i
@@ -213,7 +276,7 @@ benchmarks/dummy_bench.i: benchmarks/dummy_bench.cpp.i
 
 # target to preprocess a source file
 benchmarks/dummy_bench.cpp.i:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/titanium_bench.dir/build.make CMakeFiles/titanium_bench.dir/benchmarks/dummy_bench.cpp.i
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/titanium_bench_dummy.dir/build.make CMakeFiles/titanium_bench_dummy.dir/benchmarks/dummy_bench.cpp.i
 .PHONY : benchmarks/dummy_bench.cpp.i
 
 benchmarks/dummy_bench.s: benchmarks/dummy_bench.cpp.s
@@ -221,8 +284,80 @@ benchmarks/dummy_bench.s: benchmarks/dummy_bench.cpp.s
 
 # target to generate assembly for a file
 benchmarks/dummy_bench.cpp.s:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/titanium_bench.dir/build.make CMakeFiles/titanium_bench.dir/benchmarks/dummy_bench.cpp.s
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/titanium_bench_dummy.dir/build.make CMakeFiles/titanium_bench_dummy.dir/benchmarks/dummy_bench.cpp.s
 .PHONY : benchmarks/dummy_bench.cpp.s
+
+src/engine/baseline_engine.o: src/engine/baseline_engine.cpp.o
+.PHONY : src/engine/baseline_engine.o
+
+# target to build an object file
+src/engine/baseline_engine.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/titanium_core.dir/build.make CMakeFiles/titanium_core.dir/src/engine/baseline_engine.cpp.o
+.PHONY : src/engine/baseline_engine.cpp.o
+
+src/engine/baseline_engine.i: src/engine/baseline_engine.cpp.i
+.PHONY : src/engine/baseline_engine.i
+
+# target to preprocess a source file
+src/engine/baseline_engine.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/titanium_core.dir/build.make CMakeFiles/titanium_core.dir/src/engine/baseline_engine.cpp.i
+.PHONY : src/engine/baseline_engine.cpp.i
+
+src/engine/baseline_engine.s: src/engine/baseline_engine.cpp.s
+.PHONY : src/engine/baseline_engine.s
+
+# target to generate assembly for a file
+src/engine/baseline_engine.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/titanium_core.dir/build.make CMakeFiles/titanium_core.dir/src/engine/baseline_engine.cpp.s
+.PHONY : src/engine/baseline_engine.cpp.s
+
+src/utils/order_generator.o: src/utils/order_generator.cpp.o
+.PHONY : src/utils/order_generator.o
+
+# target to build an object file
+src/utils/order_generator.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/titanium_core.dir/build.make CMakeFiles/titanium_core.dir/src/utils/order_generator.cpp.o
+.PHONY : src/utils/order_generator.cpp.o
+
+src/utils/order_generator.i: src/utils/order_generator.cpp.i
+.PHONY : src/utils/order_generator.i
+
+# target to preprocess a source file
+src/utils/order_generator.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/titanium_core.dir/build.make CMakeFiles/titanium_core.dir/src/utils/order_generator.cpp.i
+.PHONY : src/utils/order_generator.cpp.i
+
+src/utils/order_generator.s: src/utils/order_generator.cpp.s
+.PHONY : src/utils/order_generator.s
+
+# target to generate assembly for a file
+src/utils/order_generator.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/titanium_core.dir/build.make CMakeFiles/titanium_core.dir/src/utils/order_generator.cpp.s
+.PHONY : src/utils/order_generator.cpp.s
+
+tests/test.o: tests/test.cpp.o
+.PHONY : tests/test.o
+
+# target to build an object file
+tests/test.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/titanium_test.dir/build.make CMakeFiles/titanium_test.dir/tests/test.cpp.o
+.PHONY : tests/test.cpp.o
+
+tests/test.i: tests/test.cpp.i
+.PHONY : tests/test.i
+
+# target to preprocess a source file
+tests/test.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/titanium_test.dir/build.make CMakeFiles/titanium_test.dir/tests/test.cpp.i
+.PHONY : tests/test.cpp.i
+
+tests/test.s: tests/test.cpp.s
+.PHONY : tests/test.s
+
+# target to generate assembly for a file
+tests/test.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/titanium_test.dir/build.make CMakeFiles/titanium_test.dir/tests/test.cpp.s
+.PHONY : tests/test.cpp.s
 
 # Help Target
 help:
@@ -238,10 +373,25 @@ help:
 	@echo "... rebuild_cache"
 	@echo "... benchmark"
 	@echo "... benchmark_main"
-	@echo "... titanium_bench"
+	@echo "... titanium_bench_baseline"
+	@echo "... titanium_bench_dummy"
+	@echo "... titanium_core"
+	@echo "... titanium_test"
+	@echo "... benchmarks/baseline_benchmark.o"
+	@echo "... benchmarks/baseline_benchmark.i"
+	@echo "... benchmarks/baseline_benchmark.s"
 	@echo "... benchmarks/dummy_bench.o"
 	@echo "... benchmarks/dummy_bench.i"
 	@echo "... benchmarks/dummy_bench.s"
+	@echo "... src/engine/baseline_engine.o"
+	@echo "... src/engine/baseline_engine.i"
+	@echo "... src/engine/baseline_engine.s"
+	@echo "... src/utils/order_generator.o"
+	@echo "... src/utils/order_generator.i"
+	@echo "... src/utils/order_generator.s"
+	@echo "... tests/test.o"
+	@echo "... tests/test.i"
+	@echo "... tests/test.s"
 .PHONY : help
 
 
