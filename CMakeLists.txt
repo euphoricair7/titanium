@@ -46,3 +46,6 @@ target_link_libraries(titanium_bench_dummy PRIVATE titanium_core benchmark::benc
 # Unit Tests
 add_executable(titanium_test tests/test.cpp)
 target_link_libraries(titanium_test PRIVATE titanium_core)
+
+add_executable(titanium_stress_spsc tests/stress_test_spsc.cpp)
+target_link_libraries(titanium_stress_spsc PRIVATE titanium_core pthread)
