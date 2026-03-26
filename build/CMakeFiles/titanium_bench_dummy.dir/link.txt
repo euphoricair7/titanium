@@ -1,1 +1,0 @@
-/usr/bin/c++ CMakeFiles/titanium_bench_dummy.dir/benchmarks/dummy_bench.cpp.o -o titanium_bench_dummy  libtitanium_core.a _deps/benchmark-build/src/libbenchmark_main.a -lpthread _deps/benchmark-build/src/libbenchmark.a -lrt

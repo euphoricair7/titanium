@@ -1,1 +1,0 @@
-/usr/bin/c++ CMakeFiles/titanium_test.dir/tests/test.cpp.o -o titanium_test  libtitanium_core.a
