@@ -21,6 +21,7 @@ include_directories(include)
 # Core Library
 add_library(titanium_core STATIC
     src/engine/baseline_engine.cpp
+    src/engine/titanium_engine.cpp
     src/utils/order_generator.cpp
 )
 
@@ -42,6 +43,9 @@ target_link_libraries(titanium_bench_baseline PRIVATE titanium_core)
 
 add_executable(titanium_bench_dummy benchmarks/dummy_bench.cpp)
 target_link_libraries(titanium_bench_dummy PRIVATE titanium_core benchmark::benchmark_main pthread)
+
+add_executable(titanium_bench_optimized benchmarks/titanium_benchmark.cpp)
+target_link_libraries(titanium_bench_optimized PRIVATE titanium_core)
 
 # Unit Tests
 add_executable(titanium_test tests/test.cpp)
