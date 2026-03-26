@@ -1,2 +1,52 @@
-# Ignore compiled executables
+# Build Directories
+build/
+bin/
+lib/
+
+# Compiled Object files
+*.o
+*.obj
+*.slo
+*.lo
+
+# Compiled Libraries
+*.a
+*.lib
+*.so
+*.dylib
+*.dll
+*.lai
+*.la
+
+# Executables
 *.exe
+*.out
+*.app
+titanium_bench_*
+titanium_test
+
+# IDE / Editor Files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# CMake temporary files
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+cmake_install.cmake
+install_manifest.txt
+Makefile
+
+# Dependencies
+_deps/
+
+# Python (if any scripts used)
+__pycache__/
+*.py[cod]
+
+# OS generated files
+.DS_Store
+Thumbs.db
