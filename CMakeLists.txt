@@ -41,9 +41,6 @@ FetchContent_MakeAvailable(benchmark)
 add_executable(titanium_bench_baseline benchmarks/baseline_benchmark.cpp)
 target_link_libraries(titanium_bench_baseline PRIVATE titanium_core)
 
-add_executable(titanium_bench_dummy benchmarks/dummy_bench.cpp)
-target_link_libraries(titanium_bench_dummy PRIVATE titanium_core benchmark::benchmark_main pthread)
-
 add_executable(titanium_bench_optimized benchmarks/titanium_benchmark.cpp)
 target_link_libraries(titanium_bench_optimized PRIVATE titanium_core)
 
