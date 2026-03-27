@@ -4,24 +4,30 @@
 
 namespace titanium {
 
-enum class Side : uint32_t {
+enum class Side : uint8_t {
     Buy = 0,
     Sell = 1
 };
 
-struct alignas(64) Order {
-    uint64_t id;           // 8 
-    uint64_t timestamp;    // 8
-    uint64_t next;         // 8 
-    uint32_t price;        // 4 
-    uint32_t quantity;     // 4
-    Side side;             // 4
-    
-    // Total so far: 8 + 8 + 8 + 4 + 4 + 4 = 36 bytes.
-    // To reach exactly 64 bytes, we need 28 bytes of padding.
-    char padding[64 - 36]; 
+enum class OrderType : uint8_t {
+    Limit = 0,
+    Market = 1
 };
 
-static_assert(sizeof(Order) == 64, "Order must be exactly 64 bytes");
+/**
+ * @brief Core Order struct, 64-byte cache-line aligned.
+ */
+struct alignas(64) Order {
+    uint64_t id;
+    uint64_t timestamp;
+    uint64_t next;
+    uint32_t price;
+    uint32_t quantity;
+    Side side;
+    OrderType type;
+    char padding[64 - 36 - 1]; // Adjusted padding
+};
+
+static_assert(sizeof(Order) == 64, "Order must be 64 bytes to fit in a cache line");
 
 } // namespace titanium
