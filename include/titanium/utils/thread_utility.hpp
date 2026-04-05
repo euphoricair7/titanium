@@ -1,7 +1,12 @@
 #pragma once
 
-#include <pthread.h>
 #include <iostream>
+
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <pthread.h>
+#endif
 
 namespace titanium {
 namespace utils {
@@ -13,6 +18,16 @@ namespace utils {
  * in high-performance engines.
  */
 inline bool pin_thread_to_core(int core_id) {
+#ifdef _WIN32
+    HANDLE thread = GetCurrentThread();
+    DWORD_PTR mask = (1ULL << core_id);
+    DWORD_PTR result = SetThreadAffinityMask(thread, mask);
+    if (result == 0) {
+        std::cerr << "Warning: Failed to pin thread to core " << core_id << " on Windows." << std::endl;
+        return false;
+    }
+    return true;
+#else
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
     CPU_SET(core_id, &cpuset);
@@ -25,6 +40,7 @@ inline bool pin_thread_to_core(int core_id) {
         return false;
     }
     return true;
+#endif
 }
 
 } // namespace utils

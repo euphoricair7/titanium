@@ -26,6 +26,7 @@ public:
     static constexpr std::size_t MAX_LEVELS = 104; 
 
     void process_order(Order order);
+    void process_orders_batched(const Order* orders, std::size_t total_count);
     bool cancel_order(uint64_t order_id);
 
     // For verification/benchmarking

@@ -29,6 +29,15 @@ void run_titanium(const std::vector<Order>& orders) {
     std::cout << "Titanium (std::array): " << static_cast<long long>(orders.size() / elapsed.count()) << " Ops/Sec" << std::endl;
 }
 
+void run_titanium_batched(const std::vector<Order>& orders) {
+    TitaniumEngine engine;
+    auto start = std::chrono::high_resolution_clock::now();
+    engine.process_orders_batched(orders.data(), orders.size());
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> elapsed = end - start;
+    std::cout << "Titanium + GPU Async (Batched): " << static_cast<long long>(orders.size() / elapsed.count()) << " Ops/Sec" << std::endl;
+}
+
 int main() {
     std::size_t num_orders = 1'000'000;
     auto orders = generate_dummy_orders(num_orders);
@@ -36,6 +45,7 @@ int main() {
     std::cout << "Comparing Engine Performance (1M Orders)..." << std::endl;
     run_baseline(orders);
     run_titanium(orders);
+    run_titanium_batched(orders);
 
     return 0;
 }

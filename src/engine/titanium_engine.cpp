@@ -2,6 +2,8 @@
 #include <algorithm>
 #include <cstring>
 #include <immintrin.h>
+#include <bit>
+#include "titanium/engine/risk_kernel.cuh"
 
 namespace titanium {
 
@@ -17,6 +19,65 @@ void TitaniumEngine::process_order(Order order) {
             add_to_asks(order);
         }
     }
+}
+
+void TitaniumEngine::process_orders_batched(const Order* orders, std::size_t total_count) {
+    constexpr std::size_t BATCH_SIZE = 1024;
+    AsyncRiskEngine risk_engine(BATCH_SIZE);
+
+    Order* pinned_orders[2];
+    float* pinned_results[2];
+    pinned_orders[0] = alloc_pinned_orders(BATCH_SIZE);
+    pinned_orders[1] = alloc_pinned_orders(BATCH_SIZE);
+    pinned_results[0] = alloc_pinned_results(BATCH_SIZE);
+    pinned_results[1] = alloc_pinned_results(BATCH_SIZE);
+
+    std::size_t offset = 0;
+    int current_buffer = 0;
+
+    // Prefill and submit the first batch to the GPU
+    std::size_t batch1_size = std::min(BATCH_SIZE, total_count);
+    if (batch1_size > 0) {
+        std::memcpy(pinned_orders[0], orders, batch1_size * sizeof(Order));
+        risk_engine.submit_batch(pinned_orders[0], pinned_results[0], batch1_size);
+    }
+    
+    offset += batch1_size;
+
+    while (offset < total_count) {
+        int next_buffer = 1 - current_buffer;
+        std::size_t next_batch_size = std::min(BATCH_SIZE, total_count - offset);
+
+        // Prep NEXT batch in host memory while GPU is working on CURRENT batch
+        std::memcpy(pinned_orders[next_buffer], orders + offset, next_batch_size * sizeof(Order));
+        
+        // Ensure GPU has finished the CURRENT batch before we overwrite results.
+        // It also forces pacing so CPU doesn't run infinitely ahead if it's faster.
+        risk_engine.synchronize(); 
+
+        // GPU is now idle, immediately submit the NEXT batch
+        risk_engine.submit_batch(pinned_orders[next_buffer], pinned_results[next_buffer], next_batch_size);
+
+        // Overlap: CPU processes the CURRENT batch while GPU is crunching the NEXT batch!
+        for (std::size_t i = 0; i < batch1_size; ++i) {
+            process_order(pinned_orders[current_buffer][i]);
+        }
+
+        offset += next_batch_size;
+        batch1_size = next_batch_size;
+        current_buffer = next_buffer;
+    }
+
+    // Drain the pipeline: Process the final batch on CPU
+    risk_engine.synchronize();
+    for (std::size_t i = 0; i < batch1_size; ++i) {
+        process_order(pinned_orders[current_buffer][i]);
+    }
+
+    free_pinned_orders(pinned_orders[0]);
+    free_pinned_orders(pinned_orders[1]);
+    free_pinned_results(pinned_results[0]);
+    free_pinned_results(pinned_results[1]);
 }
 
 bool TitaniumEngine::cancel_order(uint64_t order_id) {
@@ -143,7 +204,7 @@ void TitaniumEngine::add_to_bids(const Order& order) {
             __m256i cmp_result = _mm256_cmpgt_epi32(order_price_v, prices_v); 
             int mask = _mm256_movemask_ps(_mm256_castsi256_ps(cmp_result));
             if (mask != 0) {
-                i += __builtin_ctz(mask);
+                i += std::countr_zero(static_cast<unsigned int>(mask));
                 goto insert_bid;
             }
             
@@ -193,7 +254,7 @@ void TitaniumEngine::add_to_asks(const Order& order) {
             __m256i cmp_result = _mm256_cmpgt_epi32(prices_v, order_price_v); 
             int mask = _mm256_movemask_ps(_mm256_castsi256_ps(cmp_result));
             if (mask != 0) {
-                i += __builtin_ctz(mask);
+                i += std::countr_zero(static_cast<unsigned int>(mask));
                 goto insert_ask;
             }
 
