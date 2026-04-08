@@ -62,7 +62,7 @@ void run_dummy_risk_check(const Order* orders, std::size_t count, float* results
 // Pinned Memory Allocators
 Order* alloc_pinned_orders(std::size_t count) {
     Order* ptr = nullptr;
-    CUDA_CHECK(cudaHostAlloc((void**)&ptr, count * sizeof(Order), cudaHostAllocDefault));
+    CUDA_CHECK(cudaMallocHost((void**)&ptr, count * sizeof(Order)));
     return ptr;
 }
 
@@ -72,7 +72,7 @@ void free_pinned_orders(Order* ptr) {
 
 float* alloc_pinned_results(std::size_t count) {
     float* ptr = nullptr;
-    CUDA_CHECK(cudaHostAlloc((void**)&ptr, count * sizeof(float), cudaHostAllocDefault));
+    CUDA_CHECK(cudaMallocHost((void**)&ptr, count * sizeof(float)));
     return ptr;
 }
 
@@ -81,13 +81,25 @@ void free_pinned_results(float* ptr) {
 }
 
 // Async Risk Engine
-AsyncRiskEngine::AsyncRiskEngine(std::size_t batch_size) : max_batch_size_(batch_size) {
+AsyncRiskEngine::AsyncRiskEngine(std::size_t batch_size)
+    : max_batch_size_(batch_size) {
     CUDA_CHECK(cudaStreamCreate((cudaStream_t*)&stream_));
     CUDA_CHECK(cudaMalloc(&d_orders_, batch_size * sizeof(Order)));
     CUDA_CHECK(cudaMalloc(&d_results_, batch_size * sizeof(float)));
 }
 
 AsyncRiskEngine::~AsyncRiskEngine() {
+    for (auto& slot : graph_slots_) {
+        if (slot.graph_exec) {
+            cudaGraphExecDestroy((cudaGraphExec_t)slot.graph_exec);
+            slot.graph_exec = nullptr;
+        }
+        if (slot.graph) {
+            cudaGraphDestroy((cudaGraph_t)slot.graph);
+            slot.graph = nullptr;
+        }
+        slot.is_captured = false;
+    }
     cudaStreamDestroy((cudaStream_t)stream_);
     cudaFree(d_orders_);
     cudaFree(d_results_);
@@ -101,13 +113,66 @@ void AsyncRiskEngine::submit_batch(const Order* host_orders, float* host_results
 
     cudaStream_t s = (cudaStream_t)stream_;
 
-    CUDA_CHECK(cudaMemcpyAsync(d_orders_, host_orders, order_bytes, cudaMemcpyHostToDevice, s));
+    GraphSlot* slot = nullptr;
+    for (auto& candidate : graph_slots_) {
+        if (candidate.is_captured &&
+            candidate.host_orders == host_orders &&
+            candidate.host_results == host_results &&
+            candidate.count == count) {
+            slot = &candidate;
+            break;
+        }
+    }
 
-    int threads_per_block = 256;
-    int blocks_per_grid = (count + threads_per_block - 1) / threads_per_block;
-    dummy_risk_kernel_device<<<blocks_per_grid, threads_per_block, 0, s>>>(d_orders_, d_results_, count);
+    if (!slot) {
+        for (auto& candidate : graph_slots_) {
+            if (!candidate.is_captured) {
+                slot = &candidate;
+                break;
+            }
+        }
+    }
 
-    CUDA_CHECK(cudaMemcpyAsync(host_results, d_results_, result_bytes, cudaMemcpyDeviceToHost, s));
+    if (!slot) {
+        // All pre-allocated graph slots are occupied. Execute directly to avoid
+        // runtime graph destroy/recreate allocations.
+        CUDA_CHECK(cudaMemcpyAsync(d_orders_, host_orders, order_bytes, cudaMemcpyHostToDevice, s));
+
+        int threads_per_block = 256;
+        int blocks_per_grid = static_cast<int>((count + threads_per_block - 1) / threads_per_block);
+        dummy_risk_kernel_device<<<blocks_per_grid, threads_per_block, 0, s>>>(d_orders_, d_results_, count);
+        CUDA_CHECK(cudaGetLastError());
+
+        CUDA_CHECK(cudaMemcpyAsync(host_results, d_results_, result_bytes, cudaMemcpyDeviceToHost, s));
+        return;
+    }
+
+    if (!slot->is_captured) {
+        CUDA_CHECK(cudaStreamBeginCapture(s, cudaStreamCaptureModeGlobal));
+
+        CUDA_CHECK(cudaMemcpyAsync(d_orders_, host_orders, order_bytes, cudaMemcpyHostToDevice, s));
+
+        int threads_per_block = 256;
+        int blocks_per_grid = static_cast<int>((count + threads_per_block - 1) / threads_per_block);
+        dummy_risk_kernel_device<<<blocks_per_grid, threads_per_block, 0, s>>>(d_orders_, d_results_, count);
+        CUDA_CHECK(cudaGetLastError());
+
+        CUDA_CHECK(cudaMemcpyAsync(host_results, d_results_, result_bytes, cudaMemcpyDeviceToHost, s));
+
+        CUDA_CHECK(cudaStreamEndCapture(s, (cudaGraph_t*)&slot->graph));
+        CUDA_CHECK(cudaGraphInstantiate((cudaGraphExec_t*)&slot->graph_exec,
+                                        (cudaGraph_t)slot->graph,
+                                        nullptr,
+                                        nullptr,
+                                        0));
+
+        slot->host_orders = host_orders;
+        slot->host_results = host_results;
+        slot->count = count;
+        slot->is_captured = true;
+    }
+
+    CUDA_CHECK(cudaGraphLaunch((cudaGraphExec_t)slot->graph_exec, s));
 }
 
 void AsyncRiskEngine::synchronize() {

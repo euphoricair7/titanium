@@ -1,4 +1,10 @@
 cmake_minimum_required(VERSION 3.20)
+
+# Required for CMAKE_MSVC_RUNTIME_LIBRARY to take effect.
+if(POLICY CMP0091)
+    cmake_policy(SET CMP0091 NEW)
+endif()
+
 project(titanium LANGUAGES CXX CUDA)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -8,6 +14,15 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_CUDA_STANDARD 17)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 set(CMAKE_CUDA_ARCHITECTURES 86) # RTX 3070 Ti is Ampere (Compute 8.6)
+
+if(MSVC)
+    # Enforce dynamic runtime (/MD in Release, /MDd in Debug) across all targets.
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
+
+    # Avoid accidental pulls of static CRT default libraries that trigger LNK4098.
+    add_link_options(/NODEFAULTLIB:libcmt.lib)
+    add_link_options(/NODEFAULTLIB:libcmtd.lib)
+endif()
 
 if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     add_compile_options(

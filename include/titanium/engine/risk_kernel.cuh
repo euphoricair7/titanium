@@ -1,9 +1,12 @@
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include "titanium/order.hpp"
 
 struct CUstream_st;
+struct CUgraph_st;
+struct CUgraphExec_st;
 
 namespace titanium {
 
@@ -34,8 +37,19 @@ public:
     void synchronize();
 
 private:
+    struct GraphSlot {
+        CUgraph_st* graph = nullptr;
+        CUgraphExec_st* graph_exec = nullptr;
+        bool is_captured = false;
+        const Order* host_orders = nullptr;
+        float* host_results = nullptr;
+        std::size_t count = 0;
+    };
+
     std::size_t max_batch_size_;
     CUstream_st* stream_;
+    static constexpr std::size_t GRAPH_SLOT_COUNT = 2;
+    std::array<GraphSlot, GRAPH_SLOT_COUNT> graph_slots_{};
     Order* d_orders_;
     float* d_results_;
 };
