@@ -47,7 +47,7 @@ add_executable(titanium_bench_baseline benchmarks/baseline_benchmark.cpp)
 target_link_libraries(titanium_bench_baseline PRIVATE titanium_core)
 
 add_executable(titanium_bench_optimized benchmarks/titanium_benchmark.cpp)
-target_link_libraries(titanium_bench_optimized PRIVATE titanium_core)
+target_link_libraries(titanium_bench_optimized PRIVATE titanium_core benchmark::benchmark)
 
 # Unit Tests
 add_executable(titanium_test tests/test.cpp)

@@ -1,0 +1,9 @@
+﻿----------------------------------------------------------------------------------------------------------
+Benchmark                                                Time             CPU   Iterations UserCounters...
+----------------------------------------------------------------------------------------------------------
+BM_Titanium_CPU_Heavy/100000/manual_time              1692 ms         1641 ms            1 Ops/Sec=59.1018k/s
+BM_Titanium_CPU_Heavy/1000000/manual_time            16853 ms        16625 ms            1 Ops/Sec=59.3374k/s
+BM_Titanium_CPU_Heavy/5000000/manual_time            83686 ms        82250 ms            1 Ops/Sec=59.7469k/s
+BM_Titanium_GPU_Async_Heavy/100000/manual_time        73.2 ms         71.2 ms            9 Ops/Sec=1.36688M/s
+BM_Titanium_GPU_Async_Heavy/1000000/manual_time        777 ms          781 ms            1 Ops/Sec=1.28738M/s
+BM_Titanium_GPU_Async_Heavy/5000000/manual_time       4398 ms         4344 ms            1 Ops/Sec=1.13679M/s

@@ -16,7 +16,11 @@ namespace titanium {
  */
 void run_dummy_risk_check(const Order* orders, std::size_t count, float* results);
 
-// Pinned memory allocation for async transfers
+// Host Memory Registration for zero-copy transfers
+void register_host_memory(void* ptr, std::size_t size);
+void unregister_host_memory(void* ptr);
+
+// Legacy pinned memory allocations
 Order* alloc_pinned_orders(std::size_t count);
 void free_pinned_orders(Order* ptr);
 float* alloc_pinned_results(std::size_t count);

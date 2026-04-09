@@ -1,8 +1,11 @@
 #include "titanium/engine/titanium_engine.hpp"
 #include <algorithm>
 #include <cstring>
+#include <cmath>
 #include <immintrin.h>
 #include <bit>
+#include <thread>
+#include <vector>
 #include "titanium/engine/risk_kernel.cuh"
 
 namespace titanium {
@@ -21,63 +24,65 @@ void TitaniumEngine::process_order(Order order) {
     }
 }
 
-void TitaniumEngine::process_orders_batched(const Order* orders, std::size_t total_count) {
-    constexpr std::size_t BATCH_SIZE = 1024;
-    AsyncRiskEngine risk_engine(BATCH_SIZE);
-
-    Order* pinned_orders[2];
-    float* pinned_results[2];
-    pinned_orders[0] = alloc_pinned_orders(BATCH_SIZE);
-    pinned_orders[1] = alloc_pinned_orders(BATCH_SIZE);
-    pinned_results[0] = alloc_pinned_results(BATCH_SIZE);
-    pinned_results[1] = alloc_pinned_results(BATCH_SIZE);
-
-    std::size_t offset = 0;
-    int current_buffer = 0;
-
-    // Prefill and submit the first batch to the GPU
-    std::size_t batch1_size = std::min(BATCH_SIZE, total_count);
-    if (batch1_size > 0) {
-        std::memcpy(pinned_orders[0], orders, batch1_size * sizeof(Order));
-        risk_engine.submit_batch(pinned_orders[0], pinned_results[0], batch1_size);
+void TitaniumEngine::process_order_heavy_cpu(Order order) {
+    float p = static_cast<float>(order.price);
+    float q = static_cast<float>(order.quantity);
+    float v = 0.05f;
+    
+    // Identical exact 50 loop geometry to the GPU risk calculation
+    for (int i = 0; i < 50; ++i) {
+        p = p * std::cos(v) + std::sin(p) * 0.01f;
+        q = q * std::exp(-v) + 1.0f;
+        v += 0.001f;
     }
     
-    offset += batch1_size;
+    // Prevent the compiler from optimizing away the mathematical simulation
+    volatile float result = p * q * v;
+    (void)result;
 
-    while (offset < total_count) {
-        int next_buffer = 1 - current_buffer;
-        std::size_t next_batch_size = std::min(BATCH_SIZE, total_count - offset);
+    // Direct routing to standard processing
+    process_order(order);
+}
 
-        // Prep NEXT batch in host memory while GPU is working on CURRENT batch
-        std::memcpy(pinned_orders[next_buffer], orders + offset, next_batch_size * sizeof(Order));
-        
-        // Ensure GPU has finished the CURRENT batch before we overwrite results.
-        // It also forces pacing so CPU doesn't run infinitely ahead if it's faster.
-        risk_engine.synchronize(); 
+void TitaniumEngine::process_orders_batched(const Order* orders, std::size_t total_count) {
+    constexpr std::size_t BATCH_SIZE = 65536; // Radically increase batch size
+    AsyncRiskEngine risk_engine(BATCH_SIZE);
 
-        // GPU is now idle, immediately submit the NEXT batch
-        risk_engine.submit_batch(pinned_orders[next_buffer], pinned_results[next_buffer], next_batch_size);
+    // ZERO-COPY: Register the input 'orders' array directly so the GPU can pull from it.
+    // Ensure we don't accidentally mutate the const array by casting, but for registration purposes void* is fine.
+    register_host_memory(const_cast<void*>(static_cast<const void*>(orders)), total_count * sizeof(Order));
+    
+    // Allocate results array, immediately lock it into zero-copy pagelocked memory
+    std::vector<float> results(total_count);
+    register_host_memory(static_cast<void*>(results.data()), total_count * sizeof(float));
 
-        // Overlap: CPU processes the CURRENT batch while GPU is crunching the NEXT batch!
-        for (std::size_t i = 0; i < batch1_size; ++i) {
-            process_order(pinned_orders[current_buffer][i]);
+    // Decouple GPU scheduling logic into a background threading context to perfectly parallelize
+    std::thread gpu_worker([&]() {
+        std::size_t offset = 0;
+        while (offset < total_count) {
+            std::size_t current_batch = std::min(BATCH_SIZE, total_count - offset);
+
+            // Zero-Copy submission point: Point it exactly to the memory offset in the registered array
+            risk_engine.submit_batch(orders + offset, results.data() + offset, current_batch);
+            
+            // Allow this batch to fully wrap kernel and PCIe transfer
+            risk_engine.synchronize();
+
+            offset += current_batch;
         }
+    });
 
-        offset += next_batch_size;
-        batch1_size = next_batch_size;
-        current_buffer = next_buffer;
+    // The main CPU thread executes flawlessly over the entire array WITHOUT stalling
+    for (std::size_t i = 0; i < total_count; ++i) {
+        process_order(orders[i]);
     }
 
-    // Drain the pipeline: Process the final batch on CPU
-    risk_engine.synchronize();
-    for (std::size_t i = 0; i < batch1_size; ++i) {
-        process_order(pinned_orders[current_buffer][i]);
-    }
+    // Pipeline join
+    gpu_worker.join();
 
-    free_pinned_orders(pinned_orders[0]);
-    free_pinned_orders(pinned_orders[1]);
-    free_pinned_results(pinned_results[0]);
-    free_pinned_results(pinned_results[1]);
+    // Release locking constraints
+    unregister_host_memory(const_cast<void*>(static_cast<const void*>(orders)));
+    unregister_host_memory(static_cast<void*>(results.data()));
 }
 
 bool TitaniumEngine::cancel_order(uint64_t order_id) {

@@ -19,9 +19,19 @@ namespace titanium {
 __global__ void dummy_risk_kernel_device(const Order* orders, float* results, std::size_t count) {
     std::size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx < count) {
-        // Dummy risk calculation: price * quantity * 0.05
-        // Just demonstrating that the GPU can access the 64-byte aligned structs correctly
-        results[idx] = static_cast<float>(orders[idx].price) * static_cast<float>(orders[idx].quantity) * 0.05f;
+        // Heavy Dummy Risk Simulation (e.g. Monte Carlo approximation workload)
+        // Increases arithmetic intensity to exceed PCIe data transfer latency overhead
+        float p = static_cast<float>(orders[idx].price);
+        float q = static_cast<float>(orders[idx].quantity);
+        float v = 0.05f;
+        
+        for (int i = 0; i < 50; ++i) {
+            p = p * cosf(v) + sinf(p) * 0.01f;
+            q = q * expf(-v) + 1.0f;
+            v += 0.001f;
+        }
+
+        results[idx] = p * q * v;
     }
 }
 
@@ -59,7 +69,16 @@ void run_dummy_risk_check(const Order* orders, std::size_t count, float* results
     CUDA_CHECK(cudaFree(d_results));
 }
 
-// Pinned Memory Allocators
+// Host Memory Registration for zero-copy async transfers
+void register_host_memory(void* ptr, std::size_t size) {
+    CUDA_CHECK(cudaHostRegister(ptr, size, cudaHostRegisterDefault));
+}
+
+void unregister_host_memory(void* ptr) {
+    CUDA_CHECK(cudaHostUnregister(ptr));
+}
+
+// Legacy Pinned Memory Allocators
 Order* alloc_pinned_orders(std::size_t count) {
     Order* ptr = nullptr;
     CUDA_CHECK(cudaHostAlloc((void**)&ptr, count * sizeof(Order), cudaHostAllocDefault));

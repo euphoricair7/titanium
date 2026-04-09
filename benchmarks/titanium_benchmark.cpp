@@ -1,51 +1,61 @@
-#include <iostream>
-#include <chrono>
+#include <benchmark/benchmark.h>
 #include <vector>
+#include <chrono>
 #include "titanium/utils/order_generator.hpp"
-#include "titanium/engine/baseline_engine.hpp"
 #include "titanium/engine/titanium_engine.hpp"
 
 using namespace titanium;
 
-void run_baseline(const std::vector<Order>& orders) {
-    BaselineEngine engine;
-    auto start = std::chrono::high_resolution_clock::now();
-    for (const auto& order : orders) {
-        engine.process_order(order);
+// CPU strictly runs the heavy math baseline before matching
+static void BM_Titanium_CPU_Heavy(benchmark::State& state) {
+    auto orders = generate_dummy_orders(state.range(0));
+    
+    for (auto _ : state) {
+        TitaniumEngine engine;
+        auto start = std::chrono::high_resolution_clock::now();
+        
+        for (const auto& order : orders) {
+            engine.process_order_heavy_cpu(order);
+        }
+        
+        auto end = std::chrono::high_resolution_clock::now();
+        auto elapsed_seconds = std::chrono::duration_cast<std::chrono::duration<double>>(end - start);
+        state.SetIterationTime(elapsed_seconds.count());
     }
-    auto end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> elapsed = end - start;
-    std::cout << "Baseline (std::map) : " << static_cast<long long>(orders.size() / elapsed.count()) << " Ops/Sec" << std::endl;
+    
+    state.counters["Ops/Sec"] = benchmark::Counter(state.iterations() * state.range(0), benchmark::Counter::kIsRate);
 }
 
-void run_titanium(const std::vector<Order>& orders) {
-    TitaniumEngine engine;
-    auto start = std::chrono::high_resolution_clock::now();
-    for (const auto& order : orders) {
-        engine.process_order(order);
+// GPU Async runs via the heavily pipelined decoupled zero-copy streams
+static void BM_Titanium_GPU_Async_Heavy(benchmark::State& state) {
+    auto orders = generate_dummy_orders(state.range(0));
+    
+    for (auto _ : state) {
+        TitaniumEngine engine;
+        auto start = std::chrono::high_resolution_clock::now();
+        
+        engine.process_orders_batched(orders.data(), orders.size());
+        
+        auto end = std::chrono::high_resolution_clock::now();
+        auto elapsed_seconds = std::chrono::duration_cast<std::chrono::duration<double>>(end - start);
+        state.SetIterationTime(elapsed_seconds.count());
     }
-    auto end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> elapsed = end - start;
-    std::cout << "Titanium (std::array): " << static_cast<long long>(orders.size() / elapsed.count()) << " Ops/Sec" << std::endl;
+    
+    state.counters["Ops/Sec"] = benchmark::Counter(state.iterations() * state.range(0), benchmark::Counter::kIsRate);
 }
 
-void run_titanium_batched(const std::vector<Order>& orders) {
-    TitaniumEngine engine;
-    auto start = std::chrono::high_resolution_clock::now();
-    engine.process_orders_batched(orders.data(), orders.size());
-    auto end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> elapsed = end - start;
-    std::cout << "Titanium + GPU Async (Batched): " << static_cast<long long>(orders.size() / elapsed.count()) << " Ops/Sec" << std::endl;
-}
+BENCHMARK(BM_Titanium_CPU_Heavy)
+    ->Arg(100'000)
+    ->Arg(1'000'000)
+    ->Arg(5'000'000)
+    ->UseManualTime()
+    ->Unit(benchmark::kMillisecond);
 
-int main() {
-    std::size_t num_orders = 1'000'000;
-    auto orders = generate_dummy_orders(num_orders);
+BENCHMARK(BM_Titanium_GPU_Async_Heavy)
+    ->Arg(100'000)
+    ->Arg(1'000'000)
+    ->Arg(5'000'000)
+    ->UseManualTime()
+    ->Unit(benchmark::kMillisecond);
 
-    std::cout << "Comparing Engine Performance (1M Orders)..." << std::endl;
-    run_baseline(orders);
-    run_titanium(orders);
-    run_titanium_batched(orders);
-
-    return 0;
-}
+BENCHMARK_MAIN();
