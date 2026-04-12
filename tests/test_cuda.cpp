@@ -25,8 +25,17 @@ int main() {
     // Verify
     bool success = true;
     for (std::size_t i = 0; i < count; ++i) {
-        float expected = static_cast<float>(orders[i].price) * static_cast<float>(orders[i].quantity) * 0.05f;
+        float p = static_cast<float>(orders[i].price);
+        float q = static_cast<float>(orders[i].quantity);
+        float v = 0.05f;
         
+        for (int j = 0; j < 50; ++j) {
+            p = p * std::cos(v) + std::sin(p) * 0.01f;
+            q = q * std::exp(-v) + 1.0f;
+            v += 0.001f;
+        }
+        float expected = p * q * v;
+
         // Use a small epsilon for floating point comparison
         if (std::abs(results[i] - expected) > 1e-4) {
             std::cerr << "Verification failed at index " << i << "! Expected " << expected << " but got " << results[i] << std::endl;

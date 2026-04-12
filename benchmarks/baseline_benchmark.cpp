@@ -8,7 +8,7 @@ using namespace titanium;
 
 int main() {
     std::cout << "[Titanium - Baseline] Generating 1 million orders for benchmark..." << std::endl;
-    std::size_t num_orders = 1'000'000;
+    std::size_t num_orders = 1000000;
     auto orders = generate_dummy_orders(num_orders);
 
     BaselineEngine engine;

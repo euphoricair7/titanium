@@ -1,4 +1,10 @@
 cmake_minimum_required(VERSION 3.20)
+
+# Required for CMAKE_MSVC_RUNTIME_LIBRARY to take effect.
+if(POLICY CMP0091)
+    cmake_policy(SET CMP0091 NEW)
+endif()
+
 project(titanium LANGUAGES CXX CUDA)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -8,6 +14,15 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_CUDA_STANDARD 17)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 set(CMAKE_CUDA_ARCHITECTURES 86) # RTX 3070 Ti is Ampere (Compute 8.6)
+
+if(MSVC)
+    # Enforce dynamic runtime (/MD in Release, /MDd in Debug) across all targets.
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
+
+    # Avoid accidental pulls of static CRT default libraries that trigger LNK4098.
+    add_link_options(/NODEFAULTLIB:libcmt.lib)
+    add_link_options(/NODEFAULTLIB:libcmtd.lib)
+endif()
 
 if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     add_compile_options(
@@ -27,10 +42,20 @@ add_library(titanium_core STATIC
     src/engine/baseline_engine.cpp
     src/engine/titanium_engine.cpp
     src/utils/order_generator.cpp
-    src/engine/risk_kernel.cu
+    src/engine/cuda/risk_kernel.cu
 )
 
 target_include_directories(titanium_core PUBLIC include)
+
+# -------------------------------------------------------------------
+# Performance optimizations for Titanium (applied to core library)
+# -------------------------------------------------------------------
+target_compile_definitions(titanium_core PRIVATE
+    TITANIUM_FIXED_WINDOW=1          # Disable window relocation (ideal for benchmarks)
+    TITANIUM_FINE_GRAIN_PROFILE=0    # Disable fine-grained profiling timers
+    TITANIUM_ENABLE_PROFILING=1      # Disable all profiling timers in CPU benchmark builds
+    TITANIUM_GPU_THROUGHPUT_MODE=0   # Use speculative batched path (CPU+GPU)
+)
 
 # Google Benchmark
 include(FetchContent)
@@ -47,7 +72,7 @@ add_executable(titanium_bench_baseline benchmarks/baseline_benchmark.cpp)
 target_link_libraries(titanium_bench_baseline PRIVATE titanium_core)
 
 add_executable(titanium_bench_optimized benchmarks/titanium_benchmark.cpp)
-target_link_libraries(titanium_bench_optimized PRIVATE titanium_core benchmark::benchmark)
+target_link_libraries(titanium_bench_optimized PRIVATE titanium_core)
 
 # Unit Tests
 add_executable(titanium_test tests/test.cpp)
