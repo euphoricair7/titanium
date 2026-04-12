@@ -1,75 +1,63 @@
 # Titanium Trading Engine
 
-Titanium is a high-performance, low-latency trading engine framework written in C++20.
+Titanium is a high-performance, heterogeneous trading engine framework designed for ultra-low latency execution. It leverages **C++20 AVX2 SIMD** for the matching logic and **NVIDIA CUDA** for asynchronous, high-intensity risk management.
 
-## Project Structure
+## HPC Architecture
 
-The project follows a standard C++ layout for clarity and maintainability:
+The engine is built on four core high-performance pillars:
+1.  **L1 Cache Locality**: Uses a **Structure-of-Arrays (SoA)** memory layout allowing the CPU to scan 8 price levels per clock cycle.
+2.  **Lock-Free Pipeline**: A single-producer, single-consumer (SPSC) ring buffer manages communication between threads without kernel-level mutex stalls.
+3.  **Heterogeneous Decoupling**: The engine spawns a background thread to manage GPU logistics, allowing the main Matching Engine to run at 100% throughput.
+4.  **Zero-Copy GPU Transfer**: Uses `cudaHostRegister` to map system RAM directly to the GPU via DMA, eliminating the overhead of standard `memcpy`.
 
-- `include/titanium/`: Public headers.
-  - `core/`: Core data structures (e.g., `Order`).
-  - `engine/`: Matching engine implementations (e.g., `BaselineEngine`).
-  - `utils/`: Helper utilities (e.g., `OrderGenerator`).
-- `src/`: Implementation files.
-- `benchmarks/`: Performance testing suites.
-- `tests/`: Unit tests and functional verification.
-- `docs/`: Additional documentation and design notes.
+## Prerequisites
 
-## Key Components
+### Hardware
+- **CPU**: x86_64 with AVX2 support.
+- **GPU**: NVIDIA GPU (Ampere architecture or newer recommended, e.g., RTX 30-series).
 
-### 1. Order Structure (`order.hpp`)
-The `Order` struct is designed for high performance:
-- **Cache-line Aligned**: Exactly 64 bytes to prevent false sharing and optimize cache usage.
-- **POD-Compatible**: Easy to manage in contiguous memory (vectors/pools).
+### Software
+- **OS**: Windows 10/11 (with MSVC compiler).
+- **Toolchain**: Visual Studio 2022 (with "Desktop development with C++").
+- **CUDA**: NVIDIA CUDA Toolkit v12.x or 13.x.
+- **Build System**: CMake 3.20+ and Ninja.
 
-### 2. Matching Engine (`baseline_engine.hpp`)
-The current version includes a `BaselineEngine` which:
-- Uses a global `Spinlock` for thread safety.
-- Implements a Price-Time Priority matching algorithm using `std::map` and `std::vector`.
-- Optimized with a `pause` instruction in the spinlock for reduced CPU power consumption during contention.
+## Build Instructions (Windows)
 
-## Getting Started
+To build the engine with full optimizations (Release mode), follow these steps:
 
-### Prerequisites
-- CMake 3.20+
-- C++20 compatible compiler (GCC 11+, Clang 13+)
+1.  **Open PowerShell**.
+2.  **Initialize the Environment**:
+    ```powershell
+    cmd.exe /c 'call "C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\Tools\VsDevCmd.bat" -arch=amd64 && powershell'
+    ```
+3.  **Configure & Build**:
+    ```powershell
+    cmake -B build -DCMAKE_BUILD_TYPE=Release
+    cmake --build build
+    ```
 
-### Build Instructions
-```bash
-mkdir -p build && cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release
-make -j$(nproc)
+## Performance Benchmarking
+
+To run the apples-to-apples comparison between the CPU-only engine and the Asynchronous GPU pipeline:
+
+```powershell
+.\build\titanium_bench_optimized.exe
 ```
 
-### Running Tests
-```bash
-./build/titanium_test
-```
+### Expected Results
+Under a heavy risk load (50-iteration Monte Carlo simulation):
+-   **Titanium CPU**: ~1.0 Million Ops/Sec
+-   **Titanium GPU Async**: **~4.5+ Million Ops/Sec**
 
-### Running Benchmarks
-```bash
-./build/titanium_bench_optimized
-```
+## Testing & Verification
 
-## Testing Suite
+Ensure the engine is functioning correctly by running the automated test suite:
 
-The project includes a comprehensive test suite to ensure both functional correctness and performance integrity.
+-   **Logic Test**: `.\build\titanium_test.exe` (Verifies matching logic correctness).
+*   **GPU Accuracy**: `.\build\titanium_test_cuda.exe` (Verifies GPU math against CPU).
+*   **Stress Test**: `.\build\titanium_stress_spsc.exe` (Tests 10M-order lock-free integrity).
 
-### 1. Functional Tests (`titanium_test`)
-Located in [tests/test.cpp](file:///home/grass/Documents/projects/titanium/tests/test.cpp), this suite verifies:
-- **Data Layout**: Ensures `Order` is exactly 64 bytes (cache-line aligned).
-- **Matching Logic**: Validates perfect matches between Buy and Sell orders.
-- **Partial Fills**: Ensures the engine correctly handles leftover quantities in the book.
+## License
 
-### 2. Concurrency Stress Test (`titanium_stress_spsc`)
-Located in [tests/stress_test_spsc.cpp](file:///home/grass/Documents/projects/titanium/tests/stress_test_spsc.cpp), this test:
-- Processes **10 million orders** through the lock-free SPSC queue.
-- Verifies zero data loss across threads.
-
-### 3. Performance Benchmarks (`titanium_bench_optimized`)
-Located in [benchmarks/titanium_benchmark.cpp](file:///home/grass/Documents/projects/titanium/benchmarks/titanium_benchmark.cpp), this tool:
-- Compares the **Baseline Engine** (Map-based) vs **Titanium Engine** (Array-based).
-- Verifies that the optimized engine maintains its **~14M Ops/Sec** target.
-
-## Performance
-The baseline engine targets ~5-7 million operations per second, while the optimized Titanium engine achieves ~14-16 million operations per second on modern hardware.
+This project is licensed under the MIT License.

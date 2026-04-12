@@ -3,15 +3,24 @@
 #include <array>
 #include <cstddef>
 #include <unordered_map>
+#include <vector>
 #include <immintrin.h> // SIMD AVX2
 #include "titanium/order.hpp"
 #include "titanium/engine/price_level.hpp"
+#include "titanium/concurrency/spsc_queue.hpp"
 
 namespace titanium {
 
 struct OrderLocation {
     Side side;
     uint32_t price;
+};
+
+struct TradeReceipt {
+    uint64_t buyer_id;
+    uint64_t seller_id;
+    uint32_t price;
+    uint32_t quantity;
 };
 
 /**
@@ -35,6 +44,12 @@ public:
     std::size_t get_ask_count() const { return ask_count_; }
 
 private:
+    std::vector<TradeReceipt> pending_trades_;
+    SPSCQueue<uint64_t, 65536> cancel_queue_;
+
+    void process_gpu_cancellations();
+    void shred_receipts(uint64_t order_id);
+
     void match_buy(Order& order);
     void match_sell(Order& order);
     void add_to_bids(const Order& order);

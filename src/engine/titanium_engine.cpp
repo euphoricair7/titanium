@@ -68,6 +68,14 @@ void TitaniumEngine::process_orders_batched(const Order* orders, std::size_t tot
             // Allow this batch to fully wrap kernel and PCIe transfer
             risk_engine.synchronize();
 
+            // SPSC Dispatch Loop: Sift through the GPU results
+            for (std::size_t j = 0; j < current_batch; ++j) {
+                if (results[offset + j] < 0.0f) {
+                    // Risk Math Failed! Push bad order ID into the Thread-Safe Exit Queue
+                    while (!cancel_queue_.push(orders[offset + j].id)) {}
+                }
+            }
+
             offset += current_batch;
         }
     });
@@ -75,10 +83,12 @@ void TitaniumEngine::process_orders_batched(const Order* orders, std::size_t tot
     // The main CPU thread executes flawlessly over the entire array WITHOUT stalling
     for (std::size_t i = 0; i < total_count; ++i) {
         process_order(orders[i]);
+        process_gpu_cancellations();
     }
 
     // Pipeline join
     gpu_worker.join();
+    process_gpu_cancellations(); // Final drain
 
     // Release locking constraints
     unregister_host_memory(const_cast<void*>(static_cast<const void*>(orders)));
@@ -133,6 +143,8 @@ void TitaniumEngine::match_buy(Order& order) {
         for (std::uint32_t j = 0; j < level.order_count && order.quantity > 0; ) {
             Order& book_order = level.orders[j];
             if (book_order.quantity <= order.quantity) {
+                pending_trades_.push_back({order.id, book_order.id, level.orders[j].price, book_order.quantity});
+
                 order.quantity -= book_order.quantity;
                 level.total_quantity -= book_order.quantity;
                 order_tracker_.erase(book_order.id);
@@ -142,6 +154,8 @@ void TitaniumEngine::match_buy(Order& order) {
                 }
                 level.order_count--;
             } else {
+                pending_trades_.push_back({order.id, book_order.id, level.orders[j].price, order.quantity});
+
                 book_order.quantity -= order.quantity;
                 level.total_quantity -= order.quantity;
                 order.quantity = 0;
@@ -169,6 +183,8 @@ void TitaniumEngine::match_sell(Order& order) {
         for (std::uint32_t j = 0; j < level.order_count && order.quantity > 0; ) {
             Order& book_order = level.orders[j];
             if (book_order.quantity <= order.quantity) {
+                pending_trades_.push_back({book_order.id, order.id, level.orders[j].price, book_order.quantity});
+
                 order.quantity -= book_order.quantity;
                 level.total_quantity -= book_order.quantity;
                 order_tracker_.erase(book_order.id);
@@ -178,6 +194,8 @@ void TitaniumEngine::match_sell(Order& order) {
                 }
                 level.order_count--;
             } else {
+                pending_trades_.push_back({book_order.id, order.id, level.orders[j].price, order.quantity});
+
                 book_order.quantity -= order.quantity;
                 level.total_quantity -= order.quantity;
                 order.quantity = 0;
@@ -294,6 +312,21 @@ insert_ask:
 existing_ask:
     ask_data_[i].add_order(order);
     order_tracker_[order.id] = {Side::Sell, order.price};
+}
+
+void TitaniumEngine::process_gpu_cancellations() {
+    std::optional<uint64_t> canceled_id;
+    while ((canceled_id = cancel_queue_.pop())) {
+        cancel_order(*canceled_id);
+        shred_receipts(*canceled_id);
+    }
+}
+
+void TitaniumEngine::shred_receipts(uint64_t order_id) {
+    auto it = std::remove_if(pending_trades_.begin(), pending_trades_.end(), [order_id](const TradeReceipt& r) {
+        return r.buyer_id == order_id || r.seller_id == order_id;
+    });
+    pending_trades_.erase(it, pending_trades_.end());
 }
 
 } // namespace titanium
