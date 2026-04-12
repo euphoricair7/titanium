@@ -32,6 +32,15 @@ public:
         std::uint64_t add_ask_search_ns = 0;
         std::uint64_t add_ask_shift_ns = 0;
         std::uint64_t add_ask_tracker_ns = 0;
+
+        // Batched / Async Stats
+        std::uint64_t batched_calls = 0;
+        std::uint64_t batched_total_ns = 0;
+        std::uint64_t batched_orders = 0;
+        std::uint64_t batched_memcpy_ns = 0;
+        std::uint64_t batched_sync_ns = 0;
+        std::uint64_t batched_submit_ns = 0;
+        std::uint64_t batched_cpu_process_ns = 0;
     };
     struct DebugCounters {
     std::uint64_t outer_loop_count = 0;

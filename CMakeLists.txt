@@ -42,7 +42,7 @@ add_library(titanium_core STATIC
     src/engine/baseline_engine.cpp
     src/engine/titanium_engine.cpp
     src/utils/order_generator.cpp
-    src/engine/risk_kernel.cu
+    src/engine/cuda/risk_kernel.cu
 )
 
 target_include_directories(titanium_core PUBLIC include)

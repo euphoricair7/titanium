@@ -35,40 +35,52 @@ The current version includes a `BaselineEngine` which:
 - C++20 compatible compiler (GCC 11+, Clang 13+)
 
 ### Build Instructions
+
+#### Windows (PowerShell)
+```powershell
+# Create build directory and configure CMake
+cmake -B build -S .
+
+# Build the project in Release mode
+cmake --build build --config Release
+```
+
+#### Linux / macOS
 ```bash
-mkdir build
+mkdir -p build
 cd build
 cmake .. -DCMAKE_BUILD_TYPE=Release
-cmake --build . --config Release
+make -j$(nproc)
 ```
 
-### Running Tests
-```bash
-./build/titanium_test
+### Running Tests and Benchmarks
+
+The project provides several executables in the `build/Release` (Windows) or `build/` (Linux) directory:
+
+#### 1. Performance Benchmarks
+To compare the **Titanium Engine** (Optimized) vs **Baseline Engine** (Map-based):
+```powershell
+# Optimized Engine Benchmark
+.\build\Release\titanium_bench_optimized.exe
+
+# Baseline Engine Comparison
+.\build\Release\titanium_bench_baseline.exe
 ```
 
-### Running Benchmarks
-To evaluate the performance of the engine, you can run the following targets:
+#### 2. CUDA Verification
+To verify the GPU-accelerated risk check kernels:
+```powershell
+.\build\Release\titanium_test_cuda.exe
+```
 
-1. **Optimized Benchmark**:
-   ```powershell
-   # Windows
-   .\build\Release\titanium_bench_optimized.exe
-   
-   # Linux
-   ./build/titanium_bench_optimized
-   ```
-   This benchmark tests the Array-based engine with CUDA-accelerated risk checks.
+#### 3. Functional and Concurrency Tests
+```powershell
+# Core matching logic tests
+.\build\Release\titanium_test.exe
 
-2. **Baseline Benchmark**:
-   ```powershell
-   # Windows
-   .\build\Release\titanium_bench_baseline.exe
-   
-   # Linux
-   ./build/titanium_bench_baseline
-   ```
-   This benchmark compares the performance against a standard `std::map`-based engine.
+# High-concurrency SPSC stress test
+.\build\Release\titanium_stress_spsc.exe
+```
 
 ## Testing Suite
 

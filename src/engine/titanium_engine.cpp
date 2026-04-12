@@ -17,7 +17,7 @@
 #include <windows.h>
 #endif
 
-#include "titanium/engine/risk_kernel.cuh"
+#include "titanium/engine/cuda/risk_kernel.cuh"
 
 namespace titanium {
 namespace {
@@ -291,9 +291,18 @@ void TitaniumEngine::process_order(Order order) {
 
 void TitaniumEngine::process_orders_batched(const Order* orders,
                                             std::size_t total_count) {
+#if TITANIUM_ENABLE_PROFILING
+    const auto start_ns = now_ns();
+#endif
     for (std::size_t i = 0; i < total_count; ++i) {
         process_order(orders[i]);
     }
+#if TITANIUM_ENABLE_PROFILING
+    profile_stats_.batched_calls++;
+    profile_stats_.batched_orders += total_count;
+    profile_stats_.batched_total_ns += (now_ns() - start_ns);
+    // Note: Other batched stats (memcpy, sync, etc.) are 0 in this CPU-only baseline loop.
+#endif
 }
 
 bool TitaniumEngine::cancel_order(uint64_t order_id) {

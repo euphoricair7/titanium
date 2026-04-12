@@ -1,4 +1,4 @@
-#include "titanium/engine/risk_kernel.cuh"
+#include "titanium/engine/cuda/risk_kernel.cuh"
 #include <cuda_runtime.h>
 #include <iostream>
 #include <stdexcept>
