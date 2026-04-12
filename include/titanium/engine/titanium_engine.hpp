@@ -1,30 +1,18 @@
 #pragma once
 
-#include <array>
+#include <vector>
+#include <memory>
 #include <bitset>
 #include <cstddef>
 #include <cstdint>
-#include <map>
-#include <memory>
-#include <unordered_map>
-#include <vector>
-#include "titanium/order.hpp"
 #include "titanium/engine/price_level.hpp"
 
 namespace titanium {
-class AsyncRiskEngine;
-
 struct OrderLocation {
     Side side;
     uint32_t price;
 };
 
-/**
- * @brief An ultra-optimized matching engine using AVX2 SIMD for price scanning.
- * 
- * This engine uses a Structure-of-Arrays (SoA) layout to allow 8 price 
- * comparisons per cycle using AVX2 instructions.
- */
 class TitaniumEngine {
 public:
     struct ProfileStats {
@@ -44,19 +32,15 @@ public:
         std::uint64_t add_ask_search_ns = 0;
         std::uint64_t add_ask_shift_ns = 0;
         std::uint64_t add_ask_tracker_ns = 0;
-        std::uint64_t batched_calls = 0;
-        std::uint64_t batched_total_ns = 0;
-        std::uint64_t batched_cpu_process_ns = 0;
-        std::uint64_t batched_memcpy_ns = 0;
-        std::uint64_t batched_sync_ns = 0;
-        std::uint64_t batched_submit_ns = 0;
-        std::uint64_t batched_orders = 0;
     };
+    struct DebugCounters {
+    std::uint64_t outer_loop_count = 0;
+    std::uint64_t inner_loop_count = 0;
+    } debug_;
 
     static constexpr std::size_t MAX_LEVELS = 104;
-    static constexpr std::size_t PRICE_WINDOW_SIZE = 8192;
-    static constexpr std::size_t ORDER_TRACKER_CAP = 2'000'000;
-    static constexpr std::size_t BATCH_SIZE = 1024;
+    static constexpr std::size_t PRICE_WINDOW_SIZE = 262144;
+    static constexpr std::size_t ORDER_TRACKER_CAP = 1'000'000;
 
     TitaniumEngine();
     ~TitaniumEngine();
@@ -69,7 +53,6 @@ public:
     void process_orders_batched(const Order* orders, std::size_t total_count);
     bool cancel_order(uint64_t order_id);
 
-    // For verification/benchmarking
     std::size_t get_bid_count() const { return bid_count_; }
     std::size_t get_ask_count() const { return ask_count_; }
     std::size_t get_tracker_size() const { return tracker_size_; }
@@ -77,11 +60,13 @@ public:
     void reset_profile_stats() { profile_stats_ = {}; }
 
 private:
-    struct FlatOrderMeta {
+    struct OrderMetadata {
         uint32_t price = 0;
-        Side side = Side::Buy;
-        bool active = false;
+        uint8_t side = static_cast<uint8_t>(Side::Buy);
+        uint8_t active = 0;
+        uint16_t reserved = 0;
     };
+    static_assert(sizeof(OrderMetadata) == 8, "OrderMetadata should stay cache-dense (8 bytes)");
 
     void match_buy(Order& order);
     void match_sell(Order& order);
@@ -101,12 +86,9 @@ private:
     void update_best_ask_after_removal(std::size_t removed_idx);
     PriceLevelData* find_level(Side side, uint32_t price);
     void untrack_order(uint64_t order_id);
-    void track_order(uint64_t order_id, Side side, uint32_t price);
     bool lookup_order(uint64_t order_id, OrderLocation& out) const;
-    void ensure_gpu_pipeline();
 
-    std::unordered_map<uint64_t, OrderLocation> overflow_order_tracker_;
-    std::vector<FlatOrderMeta> order_metadata_;
+    std::unique_ptr<OrderMetadata[]> tracker_pool_;
     std::size_t tracker_size_ = 0;
 
     uint32_t bid_base_price_ = 0;
@@ -115,6 +97,8 @@ private:
     bool ask_base_initialized_ = false;
     int best_bid_index_ = -1;
     int best_ask_index_ = -1;
+    PriceLevelData* cached_best_bid_ = nullptr;
+    PriceLevelData* cached_best_ask_ = nullptr;
 
     std::vector<PriceLevelData> bid_data_;
     std::vector<PriceLevelData> ask_data_;
@@ -122,19 +106,14 @@ private:
     std::vector<uint8_t> ask_active_;
     std::bitset<PRICE_WINDOW_SIZE> bid_active_levels_;
     std::bitset<PRICE_WINDOW_SIZE> ask_active_levels_;
-    std::map<uint32_t, PriceLevelData, std::greater<uint32_t>> overflow_bids_;
-    std::map<uint32_t, PriceLevelData, std::less<uint32_t>> overflow_asks_;
 
     std::size_t bid_window_level_count_ = 0;
     std::size_t ask_window_level_count_ = 0;
     std::size_t bid_count_ = 0;
     std::size_t ask_count_ = 0;
 
-    std::unique_ptr<AsyncRiskEngine> async_risk_engine_;
-    Order* pinned_orders_[2] = {nullptr, nullptr};
-    float* pinned_results_[2] = {nullptr, nullptr};
-
     ProfileStats profile_stats_;
 };
 
 } // namespace titanium
+

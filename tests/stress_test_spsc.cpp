@@ -11,6 +11,7 @@
 using namespace titanium;
 
 void run_stress_test(size_t num_orders) {
+    constexpr size_t kMicroBatch = 16;
     auto queue = std::make_unique<SPSCQueue<Order, 65536>>();
     std::atomic<bool> done{false};
     std::atomic<size_t> consumed_count{0};
@@ -23,10 +24,11 @@ void run_stress_test(size_t num_orders) {
     // Consumer Thread (Matching Engine Ingestion)
     std::thread consumer([&]() {
         utils::pin_thread_to_core(2); // Pin to Core 2
-        while (!done || !queue->empty()) {
-            auto order_opt = queue->pop();
-            if (order_opt) {
-                consumed_count++;
+        std::array<Order, kMicroBatch> consumed_batch{};
+        while (!done.load(std::memory_order_acquire) || !queue->empty()) {
+            size_t popped = queue->pop_batch(consumed_batch.data(), consumed_batch.size());
+            if (popped > 0) {
+                consumed_count.fetch_add(popped, std::memory_order_relaxed);
             }
         }
     });
@@ -34,13 +36,42 @@ void run_stress_test(size_t num_orders) {
     // Producer Thread (Gateway Ingestion)
     std::thread producer([&]() {
         utils::pin_thread_to_core(1); // Pin to Core 1
+        std::array<Order, kMicroBatch> produced_batch{};
+        size_t batch_count = 0;
+
         for (size_t i = 0; i < num_orders; ++i) {
-            Order order{.id = i, .timestamp = i, .next = 0, .price = 100, .quantity = 1, .side = Side::Buy, .type = OrderType::Limit};
-            while (!queue->push(order)) {
-                // Spinning is faster than yielding for high-throughput queues
+            produced_batch[batch_count++] = Order{
+                .id = i,
+                .timestamp = i,
+                .next = 0,
+                .price = 100,
+                .quantity = 1,
+                .side = Side::Buy,
+                .type = OrderType::Limit};
+
+            if (batch_count < kMicroBatch) {
+                continue;
+            }
+
+            size_t pushed = 0;
+            while (pushed < batch_count) {
+                pushed += queue->try_push_batch(produced_batch.data() + pushed,
+                                                batch_count - pushed);
+                // Spinning is faster than yielding for high-throughput queues.
+            }
+            batch_count = 0;
+        }
+
+        if (batch_count > 0) {
+            size_t pushed = 0;
+            while (pushed < batch_count) {
+                pushed += queue->try_push_batch(produced_batch.data() + pushed,
+                                                batch_count - pushed);
+                // Flush tail batch using the same micro-batch publish path.
             }
         }
-        done = true;
+
+        done.store(true, std::memory_order_release);
     });
 
     producer.join();

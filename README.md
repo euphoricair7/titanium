@@ -36,9 +36,10 @@ The current version includes a `BaselineEngine` which:
 
 ### Build Instructions
 ```bash
-mkdir -p build && cd build
+mkdir build
+cd build
 cmake .. -DCMAKE_BUILD_TYPE=Release
-make -j$(nproc)
+cmake --build . --config Release
 ```
 
 ### Running Tests
@@ -47,9 +48,27 @@ make -j$(nproc)
 ```
 
 ### Running Benchmarks
-```bash
-./build/titanium_bench_optimized
-```
+To evaluate the performance of the engine, you can run the following targets:
+
+1. **Optimized Benchmark**:
+   ```powershell
+   # Windows
+   .\build\Release\titanium_bench_optimized.exe
+   
+   # Linux
+   ./build/titanium_bench_optimized
+   ```
+   This benchmark tests the Array-based engine with CUDA-accelerated risk checks.
+
+2. **Baseline Benchmark**:
+   ```powershell
+   # Windows
+   .\build\Release\titanium_bench_baseline.exe
+   
+   # Linux
+   ./build/titanium_bench_baseline
+   ```
+   This benchmark compares the performance against a standard `std::map`-based engine.
 
 ## Testing Suite
 

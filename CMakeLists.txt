@@ -47,6 +47,16 @@ add_library(titanium_core STATIC
 
 target_include_directories(titanium_core PUBLIC include)
 
+# -------------------------------------------------------------------
+# Performance optimizations for Titanium (applied to core library)
+# -------------------------------------------------------------------
+target_compile_definitions(titanium_core PRIVATE
+    TITANIUM_FIXED_WINDOW=1          # Disable window relocation (ideal for benchmarks)
+    TITANIUM_FINE_GRAIN_PROFILE=0    # Disable fine-grained profiling timers
+    TITANIUM_ENABLE_PROFILING=1      # Disable all profiling timers in CPU benchmark builds
+    TITANIUM_GPU_THROUGHPUT_MODE=0   # Use speculative batched path (CPU+GPU)
+)
+
 # Google Benchmark
 include(FetchContent)
 FetchContent_Declare(

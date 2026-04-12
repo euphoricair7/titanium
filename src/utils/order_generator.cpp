@@ -14,7 +14,8 @@ std::vector<Order> generate_dummy_orders(std::size_t count) {
     std::uniform_int_distribution<uint32_t> qty_dist(1, 100);
     std::uniform_int_distribution<int> side_dist(0, 1);
 
-    auto now = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+    // USE A FIXED BASE TIMESTAMP FOR DETERMINISM (Rollback)
+    uint64_t now = 1712660000000000000ULL; 
 
     for (std::size_t i = 0; i < count; ++i) {
         Order order{};
