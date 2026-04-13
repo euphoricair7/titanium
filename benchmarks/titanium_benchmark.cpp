@@ -2,6 +2,9 @@
 #include <chrono>
 #include <vector>
 #include <iomanip>
+#include <string>
+#include <map>
+#include <algorithm>
 #include <exception>
 #include <limits>
 #include <cstring>
@@ -16,9 +19,56 @@
 #include "titanium/engine/cpu/risk_kernel.hpp"
 #include "titanium/engine/cuda/risk_kernel.cuh"
 
+#include <thread>
+#include <atomic>
+#include <future>
+
 using namespace titanium;
 
 static constexpr std::size_t RISK_BATCH_SIZE = 16384;
+static constexpr std::size_t ENGINE_BATCH_SIZE = 65536;
+
+/**
+ * @brief Helper class to execute CPU risk checks across all available cores.
+ */
+class MultiThreadedRiskEngine {
+public:
+    MultiThreadedRiskEngine(std::size_t batch_size) : batch_size_(batch_size) {
+        num_threads_ = std::thread::hardware_concurrency();
+        if (num_threads_ < 1) num_threads_ = 1;
+    }
+
+    void submit_batch(const Order* orders, float* results, std::size_t count) {
+        std::size_t chunk = (count + num_threads_ - 1) / num_threads_;
+        std::vector<std::future<void>> futures;
+
+        for (std::size_t i = 0; i < num_threads_; ++i) {
+            std::size_t start = i * chunk;
+            if (start >= count) break;
+            std::size_t end = std::min(start + chunk, count);
+
+            futures.push_back(std::async(std::launch::async, [=]() {
+                run_risk_check_cpu(orders + start, end - start, results + start);
+            }));
+        }
+
+        for (auto& f : futures) f.get();
+    }
+
+    void synchronize() {
+        // CPU implementation is synchronous within submit_batch for each batch
+    }
+
+private:
+    std::size_t batch_size_;
+    std::size_t num_threads_;
+};
+
+struct BenchResult {
+    long long ops_per_sec;
+    double ns_per_order;
+    std::string label;
+};
 
 static double ns_to_ms(std::uint64_t ns) {
     return static_cast<double>(ns) / 1000000.0;
@@ -68,7 +118,7 @@ void print_profile(const TitaniumEngine::ProfileStats& p, std::size_t order_coun
     std::cout << "  input orders        : " << order_count << "\n";
 }
 
-void run_baseline(const std::vector<Order>& orders) {
+BenchResult run_baseline(const std::vector<Order>& orders) {
     BaselineEngine engine;
     auto start = std::chrono::high_resolution_clock::now();
     for (const auto& order : orders) {
@@ -76,53 +126,114 @@ void run_baseline(const std::vector<Order>& orders) {
     }
     auto end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> elapsed = end - start;
-    std::cout << "Baseline (std::map) : " << static_cast<long long>(orders.size() / elapsed.count()) << " Ops/Sec" << std::endl;
+    long long ops = static_cast<long long>(orders.size() / elapsed.count());
+    double ns = (elapsed.count() * 1e9) / static_cast<double>(orders.size());
+    std::cout << "Baseline (std::map) : " << ops << " Ops/Sec" << std::endl;
+    return {ops, ns, "Baseline (std::map)"};
 }
 
-void run_titanium(const std::vector<Order>& orders) {
+BenchResult run_titanium(const std::vector<Order>& orders) {
     TitaniumEngine engine;
-    std::cout << "[Titanium] seeding hot window" << std::endl;
     seed_hot_window(engine);
-    std::cout << "[Titanium] seeding complete" << std::endl;
     engine.reset_profile_stats();
     auto start = std::chrono::high_resolution_clock::now();
     std::size_t processed = 0;
     for (const auto& order : orders) {
         engine.process_order(order);
         ++processed;
-        if ((processed % 100000) == 0) {
-            std::cout << "[Titanium] processed " << processed << " orders" << std::endl;
-        }
     }
     auto end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> elapsed = end - start;
-    std::cout << "Titanium CPU-Only (single order): " << static_cast<long long>(orders.size() / elapsed.count()) << " Ops/Sec" << std::endl;
-    const auto& p = engine.profile_stats();
-    std::cout << "  Book levels after run: bids=" << engine.get_bid_count() 
-              << ", asks=" << engine.get_ask_count()
-              << ", tracked orders=" << engine.get_tracker_size() << std::endl;
-    print_profile(p, orders.size(), "Titanium");
+    double ns_per_order  = (elapsed.count() * 1e9) / static_cast<double>(orders.size());
+    long long ops_per_sec = static_cast<long long>(orders.size() / elapsed.count());
+    std::cout << "Titanium CPU-Only: " << ops_per_sec << " Ops/Sec" << std::endl;
+    return {ops_per_sec, ns_per_order, "Titanium CPU-Only"};
 }
 
-void run_titanium_batched(const std::vector<Order>& orders) {
+// NEW: CPU does EVERYTHING — matching + full risk math — on every order, sequentially.
+// This is what a traditional exchange without GPU offloading would look like.
+BenchResult run_titanium_cpu_full(const std::vector<Order>& orders) {
     TitaniumEngine engine;
-    std::cout << "[Titanium Batched] seeding hot window" << std::endl;
     seed_hot_window(engine);
-    std::cout << "[Titanium Batched] seeding complete" << std::endl;
+    engine.reset_profile_stats();
+
+    std::vector<float> risk_result(1);
+
+    auto start = std::chrono::high_resolution_clock::now();
+    for (const auto& order : orders) {
+        run_risk_check_cpu(&order, 1, risk_result.data());
+        if (risk_result[0] >= 0.0f) {
+            engine.process_order(order);
+        }
+    }
+    auto end = std::chrono::high_resolution_clock::now();
+
+    std::chrono::duration<double> elapsed = end - start;
+    double ns_per_order = (elapsed.count() * 1e9) / static_cast<double>(orders.size());
+    long long ops_per_sec = static_cast<long long>(orders.size() / elapsed.count());
+    std::cout << "Titanium CPU-Full: " << ops_per_sec << " Ops/Sec" << std::endl;
+    return {ops_per_sec, ns_per_order, "Titanium CPU-Full"};
+}
+
+// NEW: CPU version of the Batched Pipeline.
+// Main thread matches orders speculatively, while a separate 'cpu_worker' thread
+// uses ALL other CPU cores to perform the math in parallel.
+BenchResult run_titanium_cpu_multithreaded(const std::vector<Order>& orders) {
+    TitaniumEngine engine;
+    seed_hot_window(engine);
+    engine.reset_profile_stats();
+
+    std::size_t total_count = orders.size();
+    std::vector<float> results(total_count);
+    MultiThreadedRiskEngine risk_engine(ENGINE_BATCH_SIZE);
+
+    auto start = std::chrono::high_resolution_clock::now();
+
+    std::thread cpu_worker([&]() {
+        std::size_t offset = 0;
+        while (offset < total_count) {
+            std::size_t current_batch = std::min(ENGINE_BATCH_SIZE, total_count - offset);
+            risk_engine.submit_batch(orders.data() + offset, results.data() + offset, current_batch);
+            for (std::size_t j = 0; j < current_batch; ++j) {
+                if (results[offset + j] < 0.0f) {
+                    while (!engine.push_cancel_id(orders[offset + j].id)) {}
+                }
+            }
+            offset += current_batch;
+        }
+    });
+
+    for (std::size_t i = 0; i < total_count; ++i) {
+        engine.process_order(orders[i]);
+        engine.drain_cancellations();
+    }
+
+    cpu_worker.join();
+    engine.drain_cancellations();
+    auto end = std::chrono::high_resolution_clock::now();
+
+    std::chrono::duration<double> elapsed = end - start;
+    double ns_per_order = (elapsed.count() * 1e9) / static_cast<double>(total_count);
+    long long ops_per_sec = static_cast<long long>(total_count / elapsed.count());
+    std::cout << "Titanium CPU-Multi: " << ops_per_sec << " Ops/Sec" << std::endl;
+    return {ops_per_sec, ns_per_order, "Titanium CPU-Multi"};
+}
+
+BenchResult run_titanium_batched(const std::vector<Order>& orders) {
+    TitaniumEngine engine;
+    seed_hot_window(engine);
     engine.reset_profile_stats();
     auto start = std::chrono::high_resolution_clock::now();
     engine.process_orders_batched(orders.data(), orders.size());
     auto end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> elapsed = end - start;
-    std::cout << "Titanium Batched (speculative + GPU): " << static_cast<long long>(orders.size() / elapsed.count()) << " Ops/Sec" << std::endl;
-    const auto& p = engine.profile_stats();
-    std::cout << "  Book levels after run: bids=" << engine.get_bid_count() 
-              << ", asks=" << engine.get_ask_count()
-              << ", tracked orders=" << engine.get_tracker_size() << std::endl;
-    print_profile(p, orders.size(), "Titanium Batched");
+    double ns_per_order  = (elapsed.count() * 1e9) / static_cast<double>(orders.size());
+    long long ops_per_sec = static_cast<long long>(orders.size() / elapsed.count());
+    std::cout << "Titanium Batched (GPU): " << ops_per_sec << " Ops/Sec" << std::endl;
+    return {ops_per_sec, ns_per_order, "Titanium Batched (GPU)"};
 }
 
-void run_cpu_risk_benchmark(const std::vector<Order>& orders) {
+BenchResult run_cpu_risk_benchmark(const std::vector<Order>& orders) {
     std::vector<float> results(orders.size());
     auto start = std::chrono::high_resolution_clock::now();
     
@@ -135,17 +246,38 @@ void run_cpu_risk_benchmark(const std::vector<Order>& orders) {
     
     auto end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> elapsed = end - start;
-    std::cout << "CPU Risk Throughput (Batched)  : " << static_cast<long long>(orders.size() / elapsed.count()) << " RiskChecks/Sec" << std::endl;
+    long long ops = static_cast<long long>(orders.size() / elapsed.count());
+    double ns = (elapsed.count() * 1000.0) / static_cast<double>(orders.size()); // Actually unused for risk throughput
+    std::cout << "CPU Risk Throughput (Serial): " << ops << std::endl;
+    return {ops, ns, "CPU Risk (Serial)"};
 }
 
-void run_gpu_risk_benchmark(const std::vector<Order>& orders) {
-    // Allocate pinned memory for max performance
+BenchResult run_cpu_risk_multithreaded_benchmark(const std::vector<Order>& orders) {
+    std::vector<float> results(orders.size());
+    MultiThreadedRiskEngine engine(RISK_BATCH_SIZE);
+    
+    auto start = std::chrono::high_resolution_clock::now();
+    
+    std::size_t offset = 0;
+    while (offset < orders.size()) {
+        std::size_t count = std::min(RISK_BATCH_SIZE, orders.size() - offset);
+        engine.submit_batch(orders.data() + offset, results.data() + offset, count);
+        offset += count;
+    }
+    
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> elapsed = end - start;
+    long long ops = static_cast<long long>(orders.size() / elapsed.count());
+    std::cout << "CPU Risk Throughput (Parallel): " << ops << std::endl;
+    return {ops, 0.0, "CPU Risk (Parallel)"};
+}
+
+BenchResult run_gpu_risk_benchmark(const std::vector<Order>& orders) {
     Order* pinned_orders = alloc_pinned_orders(orders.size());
     float* pinned_results = alloc_pinned_results(orders.size());
     std::memcpy(pinned_orders, orders.data(), orders.size() * sizeof(Order));
 
     AsyncRiskEngine gpu_engine(RISK_BATCH_SIZE);
-    
     auto start = std::chrono::high_resolution_clock::now();
     
     std::size_t offset = 0;
@@ -154,42 +286,73 @@ void run_gpu_risk_benchmark(const std::vector<Order>& orders) {
         gpu_engine.submit_batch(pinned_orders + offset, pinned_results + offset, count);
         offset += count;
     }
-    // Single synchronisation at the end to measure pipeline throughput
     gpu_engine.synchronize();
-    
     auto end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> elapsed = end - start;
-    std::cout << "GPU Risk Throughput (Batched)  : " << static_cast<long long>(orders.size() / elapsed.count()) << " RiskChecks/Sec" << std::endl;
+    long long ops = static_cast<long long>(orders.size() / elapsed.count());
+    std::cout << "GPU Risk Throughput (Batched): " << ops << std::endl;
 
     free_pinned_orders(pinned_orders);
     free_pinned_results(pinned_results);
+    return {ops, 0.0, "GPU Risk (Parallel)"};
 }
 
 int main() {
-    std::size_t num_orders = 1'000'000;
-    auto orders = generate_dummy_orders(num_orders);
-    print_order_price_range(orders);
+    std::vector<std::size_t> sizes = { 1'000'000, 5'000'000, 10'000'000, 15'000'000, 20'000'000 };
+    std::map<std::size_t, std::vector<BenchResult>> all_results;
 
-    try {
-        std::cout << "Comparing Engine Performance (1M Orders)..." << std::endl;
-        std::cout << "[Stage 1] Baseline Standard Engine" << std::endl;
-        run_baseline(orders);
+    for (auto n : sizes) {
+        std::cout << "\n============================================\n";
+        std::cout << "  RUNNING BENCHMARK FOR " << n / 1000000 << "M ORDERS\n";
+        std::cout << "============================================\n";
         
-        std::cout << "\n[Stage 2] Titanium CPU-Only (Single Order Processing)" << std::endl;
-        run_titanium(orders);
-        
-        std::cout << "\n[Stage 3] Titanium Batched (Speculative + GPU Offload)" << std::endl;
-        run_titanium_batched(orders);
-        
-        std::cout << "\n[Stage 4] CPU Risk Kernel Throughput" << std::endl;
-        run_cpu_risk_benchmark(orders);
-        
-        std::cout << "\n[Stage 5] GPU Risk Kernel Throughput (CUDA)" << std::endl;
-        run_gpu_risk_benchmark(orders);
-        
-    } catch (const std::exception& e) {
-        std::cerr << "Benchmark failed: " << e.what() << std::endl;
-        return 1;
+        auto orders = generate_dummy_orders(n);
+        std::vector<BenchResult> results;
+
+        try {
+            results.push_back(run_baseline(orders));
+            results.push_back(run_titanium(orders));
+            results.push_back(run_titanium_cpu_full(orders));
+            results.push_back(run_titanium_cpu_multithreaded(orders));
+            results.push_back(run_titanium_batched(orders));
+            results.push_back(run_cpu_risk_benchmark(orders));
+            results.push_back(run_cpu_risk_multithreaded_benchmark(orders));
+            results.push_back(run_gpu_risk_benchmark(orders));
+            
+            all_results[n] = results;
+        } catch (const std::exception& e) {
+            std::cerr << "Benchmark failed for " << n << ": " << e.what() << std::endl;
+        }
+    }
+
+    // Final Comparison Table
+    std::cout << "\n\nFINAL PERFORMANCE COMPARISON TABLE (Ops/Sec)\n";
+    std::cout << "| Scale | Baseline | Titanium | CPU Serial | CPU Multi | CPU + GPU |\n";
+    std::cout << "| :--- | :--- | :--- | :--- | :--- | :--- |\n";
+    
+    for (auto n : sizes) {
+        if (all_results.find(n) == all_results.end()) continue;
+        const auto& r = all_results[n];
+        std::cout << "| " << n / 1000000 << "M | "
+                  << r[0].ops_per_sec << " | "
+                  << r[1].ops_per_sec << " | "
+                  << r[2].ops_per_sec << " | "
+                  << r[3].ops_per_sec << " | "
+                  << r[4].ops_per_sec << " |\n";
+    }
+
+    std::cout << "\nLATENCY COMPARISON (Avg ns/order)\n";
+    std::cout << "| Scale | Titanium (Unsafe) | CPU Serial | CPU Multi | CPU + GPU |\n";
+    std::cout << "| :--- | :--- | :--- | :--- | :--- |\n";
+    for (auto n : sizes) {
+        if (all_results.find(n) == all_results.end()) continue;
+        const auto& r = all_results[n];
+        std::cout << "| " << n / 1000000 << "M | "
+                  << std::fixed << std::setprecision(1)
+                  << r[1].ns_per_order << " | "
+                  << r[2].ns_per_order << " | "
+                  << r[3].ns_per_order << " | "
+                  << r[4].ns_per_order << " |\n";
     }
 
     return 0;

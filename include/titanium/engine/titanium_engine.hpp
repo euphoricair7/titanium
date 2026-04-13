@@ -76,6 +76,10 @@ public:
     const ProfileStats& profile_stats() const { return profile_stats_; }
     void reset_profile_stats() { profile_stats_ = {}; }
 
+    // Manual cancellation pipeline exposure for benchmarking
+    bool push_cancel_id(uint64_t id) { return cancel_queue_.push(id); }
+    void drain_cancellations() { process_gpu_cancellations(); }
+
 private:
     std::vector<TradeReceipt> pending_trades_;
     SPSCQueue<uint64_t, 65536> cancel_queue_;
